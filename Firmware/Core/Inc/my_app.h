@@ -8,12 +8,16 @@
  * @copyright Copyright (c) 2026
  * 
  */
+#ifndef H_MY_APP
+#define H_MY_APP
 #include "stm32g4xx_hal.h"
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#ifndef H_MY_APP
-#define H_MY_APP
+#include "usbd_cdc_if.h"
+#include <stdint.h>
+#include <string.h>
+
 void vTask1(void* pvParameters);
 void vTask1(void* pvParameters);
 void my_app(void);
