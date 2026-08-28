@@ -17,7 +17,7 @@
 #include "usbd_cdc_if.h"
 #include <stdint.h>
 #include <string.h>
-
+extern ADC_HandleTypeDef hadc1;
 void vTask1(void* pvParameters);
 void vTask1(void* pvParameters);
 void my_app(void);
