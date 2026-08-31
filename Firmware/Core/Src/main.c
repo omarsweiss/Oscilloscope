@@ -21,6 +21,7 @@
 #include "cmsis_os.h"
 #include "stm32g4xx_hal_adc.h"
 #include "stm32g4xx_hal_adc_ex.h"
+#include "stm32g4xx_hal_def.h"
 #include "stm32g4xx_hal_tim.h"
 #include "usb_device.h"
 
@@ -64,7 +65,7 @@ UART_HandleTypeDef huart1;
 
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
-
+  volatile uint16_t adcVal[200];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,7 +78,7 @@ static void MX_TIM3_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc){}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -104,7 +105,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  uint16_t adcVal[2];
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -169,9 +170,15 @@ int main(void)
 
   /* Start scheduler */
   
-  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-  HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adcVal,(sizeof(adcVal)/sizeof(adcVal[0])) );
-  HAL_TIM_Base_Start(&htim3);
+  if(HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK){
+    printf("calib err\n");
+  }
+  if(HAL_ADC_Start_DMA(&hadc1,(uint32_t*)adcVal,(sizeof(adcVal)/sizeof(adcVal[0])) ) != HAL_OK){
+    printf("start dma err\n");
+  }
+  if(HAL_TIM_Base_Start(&htim3)!=HAL_OK){
+    printf("hal tim strt err\n");
+  }
 
   my_app();
   //osKernelStart();
@@ -184,7 +191,7 @@ int main(void)
   {
 
     /* USER CODE END WHILE */
-    printf("ADC Val1 %d\nADC Val2 %d n",adcVal[0],adcVal[1]);
+    printf("ADC Val1 %dADC Val2 %d \r\n",adcVal[0],adcVal[1]);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */

@@ -1,9 +1,40 @@
-import serial
-print('test', flush=True)
-ser = serial.Serial('COM3', 115200, timeout=1)
+from PyQt6 import QtWidgets, QtCore
+import pyqtgraph as pg
+import sys
+from random import randint
 
-while True:
-    if ser.in_waiting > 0:
-        line = ser.readline().decode('utf-8').strip()
-        print(line, flush=True)
 
+class MainWindow(QtWidgets.QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.graphWidget = pg.PlotWidget()
+        self.setCentralWidget(self.graphWidget)
+
+        self.x = list(range(100))  # 100 time points
+        self.y = [randint(0, 100) for _ in range(100)]  # 100 data points
+
+        self.graphWidget.setBackground("w")
+
+        pen = pg.mkPen(color=(255, 0, 0))
+        self.data_line = self.graphWidget.plot(self.x, self.y, pen=pen)
+
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(50)
+        self.timer.timeout.connect(self.update_plot_data)
+        self.timer.start()
+
+    def update_plot_data(self):
+        self.x = self.x[1:]  # Remove the first x element.
+        self.x.append(self.x[-1] + 1)  # Add a new value 1 higher than the last.
+
+        self.y = self.y[1:]  # Remove the first y element.
+        self.y.append(randint(0, 100))  # Add a new random value.
+
+        self.data_line.setData(self.x, self.y)  # Update the data.
+
+
+app = QtWidgets.QApplication(sys.argv)
+w = MainWindow()
+w.show()
+sys.exit(app.exec())

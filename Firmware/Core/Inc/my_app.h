@@ -14,12 +14,16 @@
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
-#include "usbd_cdc_if.h"
 #include <stdint.h>
 #include <string.h>
+#include "stm32g4xx_hal_adc.h"
+#include "usbd_cdc.h"
+#include "usbd_cdc_if.h"
+
 extern ADC_HandleTypeDef hadc1;
+extern volatile uint16_t adcVal[200];
 void vTask1(void* pvParameters);
-void vTask1(void* pvParameters);
+
 void my_app(void);
 
 #endif

@@ -1,0 +1,103 @@
+{
+  "id": "2df365aa-618b-4203-9104-de83281f8489",
+  "name": "Session 8/30/2026, 4:56:05 PM",
+  "startTime": 1788098165898,
+  "endTime": 1788098182505,
+  "duration": 16607,
+  "portConfig": {
+    "path": "COM4",
+    "baudRate": 115200,
+    "dataBits": 8,
+    "stopBits": 1,
+    "parity": "none",
+    "lineEnding": "\\n"
+  },
+  "events": [
+    {
+      "timestamp": 129,
+      "direction": "rx",
+      "data": "DAkLCQ=="
+    },
+    {
+      "timestamp": 1127,
+      "direction": "rx",
+      "data": "CwkJCQ=="
+    },
+    {
+      "timestamp": 2126,
+      "direction": "rx",
+      "data": "CQkMCQ=="
+    },
+    {
+      "timestamp": 3124,
+      "direction": "rx",
+      "data": "CgkICQ=="
+    },
+    {
+      "timestamp": 4123,
+      "direction": "rx",
+      "data": "CgkLCQ=="
+    },
+    {
+      "timestamp": 5121,
+      "direction": "rx",
+      "data": "DAkDCQ=="
+    },
+    {
+      "timestamp": 6120,
+      "direction": "rx",
+      "data": "CgkLCQ=="
+    },
+    {
+      "timestamp": 7118,
+      "direction": "rx",
+      "data": "DgkNCQ=="
+    },
+    {
+      "timestamp": 8116,
+      "direction": "rx",
+      "data": "CwkFCQ=="
+    },
+    {
+      "timestamp": 9115,
+      "direction": "rx",
+      "data": "CAkHCQ=="
+    },
+    {
+      "timestamp": 10113,
+      "direction": "rx",
+      "data": "BwkJCQ=="
+    },
+    {
+      "timestamp": 11111,
+      "direction": "rx",
+      "data": "CgkJCQ=="
+    },
+    {
+      "timestamp": 12109,
+      "direction": "rx",
+      "data": "CQkKCQ=="
+    },
+    {
+      "timestamp": 13108,
+      "direction": "rx",
+      "data": "CwkJCQ=="
+    },
+    {
+      "timestamp": 14106,
+      "direction": "rx",
+      "data": "BwkQCQ=="
+    },
+    {
+      "timestamp": 15104,
+      "direction": "rx",
+      "data": "CQkICQ=="
+    },
+    {
+      "timestamp": 16102,
+      "direction": "rx",
+      "data": "CwkKCQ=="
+    }
+  ],
+  "markers": []
+}
