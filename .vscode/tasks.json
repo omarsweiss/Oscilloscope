@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "options": {
+        "cwd": "${workspaceFolder}/Firmware"
+    },
+    "tasks": [
+        {
+            "label": "CMake: configure (Debug)",
+            "type": "shell",
+            "command": "cmake --preset Debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build (Debug)",
+            "type": "shell",
+            "command": "cmake --build --preset Debug",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Build (Release)",
+            "type": "shell",
+            "command": "cmake --build --preset Release",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Clean (Debug)",
+            "type": "shell",
+            "command": "cmake --build --preset Debug --target clean",
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash (Debug)",
+            "type": "shell",
+            "command": "/home/omar/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI -c port=SWD -w build/Debug/Firmware.elf -rst",
+            "dependsOn": "Build (Debug)",
+            "problemMatcher": []
+        }
+    ]
+}

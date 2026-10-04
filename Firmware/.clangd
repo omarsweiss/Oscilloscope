@@ -1,0 +1,10 @@
+CompileFlags:
+  # compile_commands.json is written into the preset's binary dir.
+  CompilationDatabase: build/Debug
+  Add:
+    - -Wno-unknown-warning-option
+  Remove:
+    # GCC-only flags clangd does not understand.
+    - -mthumb-interwork
+    - -fcyclomatic-complexity
+    - --specs=*

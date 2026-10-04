@@ -1,0 +1,28 @@
+# CMake / Ninja build output
+Firmware/build/
+build/
+
+# CubeMX generation bookkeeping (regenerated every time, pure churn)
+Firmware/.mxproject
+
+# STM32CubeIDE, if the project is ever opened there
+.settings/
+.cproject
+.project
+Debug/
+Release/
+
+# Build artifacts, if anything is ever built in-tree
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+*.su
+*.o
+*.obj
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store

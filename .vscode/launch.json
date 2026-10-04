@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (ST-Link)",
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/Firmware",
+            "deviceName": "STM32G474RETx",
+            "program": "${workspaceFolder}/Firmware/build/Debug/Firmware.elf",
+            "runEntry": "main",
+            "preLaunchTask": "Build (Debug)",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${workspaceFolder}/Firmware/build/Debug/Firmware.elf"
+                }
+            ],
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": "4"
+            },
+            "serverCubeProgPath": "/home/omar/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin"
+        }
+    ]
+}

@@ -1,0 +1,26 @@
+{
+    // The CMake project lives in Firmware/, but the workspace root is the repo root.
+    "cmake.sourceDirectory": "${workspaceFolder}/Firmware",
+    "cmake.useCMakePresets": "always",
+    "cmake.configureOnOpen": true,
+
+    // IntelliSense comes from ST's bundled clangd (see Firmware/.clangd).
+    // query-driver lets clangd pick up arm-none-eabi-gcc's builtin include paths.
+    "stm32cube-ide-clangd.arguments": [
+        "--query-driver=**/arm-none-eabi-*",
+        "--header-insertion=never"
+    ],
+
+    "files.associations": {
+        "*.ioc": "ini",
+        "*.ld": "ld"
+    },
+
+    // Keep generated build output out of search results and the file watcher.
+    "search.exclude": {
+        "Firmware/build/**": true
+    },
+    "files.watcherExclude": {
+        "**/Firmware/build/**": true
+    }
+}
