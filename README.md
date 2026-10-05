@@ -13,3 +13,5 @@
   per transfer.
 
 This comes out to 5.05 MSPS
+
+Data is being sent through USB CDC Fullspeed, around 500kb/s 
