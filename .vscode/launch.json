@@ -2,6 +2,23 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "cwd": "${workspaceFolder}",
+            "executable": "./Firmware/build/Debug/Firmware.elf",
+            "name": "Debug with ST-Link",
+            "request": "launch",
+            "type": "cortex-debug",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none",
+            "servertype": "stlink",
+            "device": "STM32G474RETx",
+            "preLaunchTask": "Build (Debug)",
+            // ST-LINK_gdbserver is not on PATH; it lives in the STM32Cube bundle dir.
+            "stlinkPath": "/home/omar/.local/share/stm32cube/bundles/stlink-gdbserver/7.12.0+st.2/bin/ST-LINK_gdbserver",
+            // Passed as -cp; cortex-debug's default (/usr/local/...) does not exist here.
+            "stm32cubeprogrammer": "/home/omar/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin",
+            "svdFile": "/home/omar/STMicroelectronics/STM32Cube/STM32CubeProgrammer/SVD/STM32G474.svd"
+        },
+        {
             "name": "Debug (ST-Link)",
             "type": "stlinkgdbtarget",
             "request": "launch",

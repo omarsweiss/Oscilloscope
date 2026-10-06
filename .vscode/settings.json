@@ -16,6 +16,17 @@
         "*.ld": "ld"
     },
 
+    // VS Code is the snap build, so its integrated terminal inherits snap's
+    // core20 runtime paths. System binaries then load snap's old glibc
+    // (undefined symbol: __libc_pthread_init). null removes the variable.
+    "terminal.integrated.env.linux": {
+        "LD_LIBRARY_PATH": null,
+        "GTK_PATH": null,
+        "GIO_MODULE_DIR": null,
+        "GSETTINGS_SCHEMA_DIR": null,
+        "LOCPATH": null
+    },
+
     // Keep generated build output out of search results and the file watcher.
     "search.exclude": {
         "Firmware/build/**": true

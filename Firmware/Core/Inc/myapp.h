@@ -6,6 +6,7 @@
 void myapp(void);
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc);
 extern ADC_HandleTypeDef hadc1;
+extern ADC_HandleTypeDef hadc2;
 extern DMA_HandleTypeDef hdma_adc1;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim1;
