@@ -2,13 +2,16 @@
 
 
 import os
+import struct
 import sys
 import time
 import threading
 import queue
-from collections import deque
 
 os.environ.setdefault("PYQTGRAPH_QT_LIB", "PyQt6")
+# VS Code's snap terminal puts its own outdated GSettings schemas first on
+# XDG_DATA_DIRS, which makes Qt's GTK theme abort on GNOME 50. Use the system ones.
+os.environ.setdefault("GSETTINGS_SCHEMA_DIR", "/usr/share/glib-2.0/schemas")
 
 import numpy as np
 import serial
@@ -17,7 +20,8 @@ from PyQt6 import QtWidgets, QtCore
 import pyqtgraph as pg
 
 
-SAMPLES_PER_FRAME = 100          # uint16 count of snapshot[]
+ADC_BUF_LEN = 16000               # must match ADC_BUF_LEN in myapp.c (DMA words)
+SAMPLES_PER_FRAME = 2 * ADC_BUF_LEN   # uint16 count of adcBuf[]
 BYTES_PER_FRAME = SAMPLES_PER_FRAME * 2
 
 ADC_CLK_HZ = 48_000_000
@@ -27,9 +31,23 @@ DELAY_CYCLES = 9                 # TwoSamplingDelay: ADC2 offset from ADC1
 VREF = 3.3
 ADC_FULL_SCALE = 4095            # 12-bit
 
-HISTORY_SECONDS = 10.0           # rolling wall-clock window kept for scrubback
-
 STM32_VID, STM32_CDC_PID = 0x0483, 0x5740
+
+# Commands to the board: must match Cmd in myapp.h (packed, 7 bytes).
+CMD = struct.Struct("<BIH")      # id, freq_hz, dutyx100
+CMD_PWM, CMD_DAC = 1, 2
+TIMER_CLK_HZ = 48_000_000        # TIM1 / TIM6 clock
+DAC_TABLE_LEN = 64               # points in sinewave[]
+PWM_MAX_HZ = 24_000_000          # limits enforced by pwm_set / dac_set
+DAC_MAX_HZ = 15_000
+
+
+def timer_actual_hz(hz: int) -> float:
+    """Frequency the timer really produces for a request, using the firmware's PSC/ARR maths."""
+    ticks = TIMER_CLK_HZ // hz
+    psc = ticks // 65536
+    arr = ticks // (psc + 1) - 1
+    return TIMER_CLK_HZ / ((psc + 1) * (arr + 1))
 
 
 def build_time_axis(n: int) -> np.ndarray:
@@ -39,6 +57,7 @@ def build_time_axis(n: int) -> np.ndarray:
     offset = np.where(idx % 2, DELAY_CYCLES, 0)      # ADC2 lags ADC1 by DELAY_CYCLES
     cycles = pair * PAIR_CYCLES + offset
     return cycles / ADC_CLK_HZ * 1e6
+
 
 
 def find_port() -> str:
@@ -103,7 +122,7 @@ class Scope(QtWidgets.QMainWindow):
     def __init__(self, port: str):
         super().__init__()
         self.setWindowTitle(f"STM32G474 Scope — {port}")
-        self.resize(1050, 760)
+        self.resize(1050, 600)
 
         self.frames = queue.Queue(maxsize=4)
         self.reader = Reader(port, self.frames)
@@ -114,132 +133,171 @@ class Scope(QtWidgets.QMainWindow):
         self.frame_count = 0
         self.t0 = time.monotonic()
 
-        # Rolling history, trimmed to HISTORY_SECONDS of wall-clock time.
-        # Per-frame stats are precomputed on arrival so redraws stay cheap.
-        self.h_t = deque()
-        self.h_min = deque()
-        self.h_max = deque()
-        self.h_mean = deque()
-        self.h_frames = deque()
+        # Antialiasing makes a 4096-point square wave take ~350 ms to draw.
+        pg.setConfigOptions(antialias=False)
 
-        pg.setConfigOptions(antialias=True)
-
-        # --- top: one frame, on the true (non-uniform) microsecond axis -------
-        self.plot = pg.PlotWidget(title="Current frame")
+        # One frame, on the true (non-uniform) microsecond axis
+        self.plot = pg.PlotWidget()
         self.plot.setLabel("bottom", "Time", units="µs")
         self.plot.setLabel("left", "Voltage", units="V")
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.plot.setYRange(0, VREF)
         self.plot.setXRange(self.t[0], self.t[-1])
-        self.curve = self.plot.plot(pen=pg.mkPen("#4ea1ff", width=1.5))
-
-        # --- bottom: rolling history, min/max envelope + mean -----------------
-        self.hist_plot = pg.PlotWidget(title=f"Last {HISTORY_SECONDS:g} s")
-        self.hist_plot.setLabel("bottom", "Elapsed", units="s")
-        self.hist_plot.setLabel("left", "Voltage", units="V")
-        self.hist_plot.showGrid(x=True, y=True, alpha=0.3)
-        self.hist_plot.setYRange(0, VREF)
-        self.hist_min = self.hist_plot.plot(pen=pg.mkPen("#2d6a9f", width=1))
-        self.hist_max = self.hist_plot.plot(pen=pg.mkPen("#2d6a9f", width=1))
-        self.hist_plot.addItem(
-            pg.FillBetweenItem(self.hist_min, self.hist_max, brush=pg.mkBrush(45, 106, 159, 70))
-        )
-        self.hist_mean = self.hist_plot.plot(pen=pg.mkPen("#ffb454", width=1.5))
-
-        # Draggable cursor, only while paused: picks which past frame to show.
-        self.cursor = pg.InfiniteLine(angle=90, movable=True, pen=pg.mkPen("#e05c5c", width=1))
-        self.hist_plot.addItem(self.cursor)
-        self.cursor.hide()
-        self.cursor.sigPositionChanged.connect(self.on_cursor)
+        # Mouse wheel / drag act on time only; voltage stays fixed at 0..VREF.
+        # Limits stop you from panning off the ends of the frame.
+        self.plot.setMouseEnabled(x=True, y=False)
+        self.plot.setLimits(xMin=self.t[0], xMax=self.t[-1], minXRange=1.0,
+                            yMin=-0.1, yMax=VREF + 0.1)
+        # clipToView only draws the visible points, so zooming in is cheap.
+        self.curve = self.plot.plot(pen=pg.mkPen("#4ea1ff", width=1), clipToView=True)
+        # Zoomed out, 32k points are more than the screen has pixels. Peak downsampling
+        # keeps each pixel column's min and max, so square-wave edges stay sharp.
+        self.curve.setDownsampling(auto=True, method="peak")
+        self.plot.sigXRangeChanged.connect(self.on_zoom)
 
         self.readout = QtWidgets.QLabel("waiting for data…")
         self.readout.setStyleSheet("font-family: monospace; padding: 4px;")
+
+        # Preset time windows, like a scope's time/div knob.
+        self.window_box = QtWidgets.QComboBox()
+        self.window_box.addItem("Full frame", None)
+        for us in (5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5, 2):
+            self.window_box.addItem(f"{us} µs", us)
+        self.window_box.activated.connect(self.on_window)
+
+        self.reset_btn = QtWidgets.QPushButton("Reset zoom")
+        self.reset_btn.clicked.connect(lambda: self.set_window(None))
 
         self.pause_btn = QtWidgets.QPushButton("Pause")
         self.pause_btn.setCheckable(True)
         self.pause_btn.toggled.connect(self.on_pause)
 
-        bar = QtWidgets.QHBoxLayout()
-        bar.addWidget(self.readout, 1)
-        bar.addWidget(self.pause_btn)
+        controls = QtWidgets.QHBoxLayout()
+        controls.addWidget(QtWidgets.QLabel("Window:"))
+        controls.addWidget(self.window_box)
+        controls.addWidget(self.reset_btn)
+        controls.addStretch(1)
+        controls.addWidget(self.pause_btn)
+
+        # Signal generator: PWM on PC0, DAC sine on PA4.
+        self.pwm_freq = QtWidgets.QSpinBox()
+        self.pwm_freq.setRange(1, PWM_MAX_HZ)
+        self.pwm_freq.setValue(100_000)
+        self.pwm_freq.setSuffix(" Hz")
+        self.pwm_freq.setGroupSeparatorShown(True)
+        self.pwm_duty = QtWidgets.QDoubleSpinBox()
+        self.pwm_duty.setRange(0, 100)
+        self.pwm_duty.setDecimals(2)
+        self.pwm_duty.setValue(50)
+        self.pwm_duty.setSuffix(" %")
+        pwm_btn = QtWidgets.QPushButton("Set PWM")
+        pwm_btn.clicked.connect(self.send_pwm)
+
+        self.dac_freq = QtWidgets.QSpinBox()
+        self.dac_freq.setRange(1, DAC_MAX_HZ)
+        self.dac_freq.setValue(10_000)
+        self.dac_freq.setSuffix(" Hz")
+        self.dac_freq.setGroupSeparatorShown(True)
+        dac_btn = QtWidgets.QPushButton("Set DAC")
+        dac_btn.clicked.connect(self.send_dac)
+
+        self.gen_status = QtWidgets.QLabel("")
+        self.gen_status.setStyleSheet("font-family: monospace;")
+
+        generator = QtWidgets.QHBoxLayout()
+        for w in (QtWidgets.QLabel("PWM (PC0):"), self.pwm_freq, self.pwm_duty, pwm_btn,
+                  QtWidgets.QLabel("   DAC sine (PA4):"), self.dac_freq, dac_btn):
+            generator.addWidget(w)
+        generator.addWidget(self.gen_status, 1)
 
         root = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(root)
-        layout.addWidget(self.plot, 3)
-        layout.addWidget(self.hist_plot, 2)
-        layout.addLayout(bar)
+        layout.addWidget(self.plot)
+        layout.addLayout(controls)
+        layout.addLayout(generator)
+        layout.addWidget(self.readout)
         self.setCentralWidget(root)
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(30)   # ~33 Hz redraw; the link, not the GUI, is the limit
 
-    # ------------------------------------------------------------------ pause
     def on_pause(self, checked: bool):
         self.paused = checked
         self.pause_btn.setText("Resume" if checked else "Pause")
-        if checked and self.h_t:
-            # Freeze: show the whole retained window and expose the cursor.
-            self.hist_plot.setXRange(self.h_t[0], self.h_t[-1])
-            self.cursor.setValue(self.h_t[-1])
-            self.cursor.show()
-            self.plot.setTitle("Paused — drag the red cursor to scrub frames")
-        else:
-            self.cursor.hide()
-            self.plot.setTitle("Current frame")
 
-    def on_cursor(self):
-        """Show whichever retained frame is nearest the cursor."""
-        if not self.paused or not self.h_t:
+    # ------------------------------------------------------------ generator
+    def send_cmd(self, cmd_id: int, freq_hz: int, duty_x100: int = 0) -> bool:
+        try:
+            self.reader.ser.write(CMD.pack(cmd_id, freq_hz, duty_x100))
+            return True
+        except (serial.SerialException, OSError) as exc:
+            self.gen_status.setText(f"send failed: {exc}")
+            return False
+
+    def send_pwm(self):
+        hz = self.pwm_freq.value()
+        duty_x100 = round(self.pwm_duty.value() * 100)
+        if self.send_cmd(CMD_PWM, hz, duty_x100):
+            self.gen_status.setText(f"PWM sent: actual {timer_actual_hz(hz):,.1f} Hz")
+
+    def send_dac(self):
+        hz = self.dac_freq.value()
+        if self.send_cmd(CMD_DAC, hz):
+            # TIM6 steps through the table, so the sine is the tick rate / table length.
+            actual = timer_actual_hz(hz * DAC_TABLE_LEN) / DAC_TABLE_LEN
+            self.gen_status.setText(f"DAC sent: actual {actual:,.1f} Hz")
+
+    def on_window(self, index: int):
+        self.set_window(self.window_box.itemData(index))
+
+    def set_window(self, width_us):
+        """Show width_us of the frame starting at the current left edge, or the whole frame."""
+        if width_us is None:
+            self.window_box.setCurrentIndex(0)
+            self.plot.setXRange(self.t[0], self.t[-1], padding=0)
             return
-        times = np.fromiter(self.h_t, dtype=float, count=len(self.h_t))
-        i = int(np.argmin(np.abs(times - self.cursor.value())))
-        self.show_frame(self.h_frames[i])
-        self.plot.setTitle(f"Paused — frame {i + 1}/{len(self.h_t)} at t = {times[i]:.3f} s")
+        left = self.plot.viewRange()[0][0]
+        left = min(max(left, self.t[0]), self.t[-1] - width_us)
+        self.plot.setXRange(left, left + width_us, padding=0)
 
-    # ----------------------------------------------------------------- drawing
-    def show_frame(self, raw: np.ndarray):
-        self.curve.setData(self.t, raw * (VREF / ADC_FULL_SCALE))
+    def on_zoom(self, _view, x_range):
+        # Once only a few hundred samples are visible, mark each one with a dot
+        # so you can see where the real samples are vs. the lines between them.
+        visible = (x_range[1] - x_range[0]) / self.t[-1] * SAMPLES_PER_FRAME
+        if visible < 300:
+            self.curve.setSymbol("o")
+            self.curve.setSymbolSize(4)
+            self.curve.setSymbolBrush("#4ea1ff")
+            self.curve.setSymbolPen(None)
+        else:
+            self.curve.setSymbol(None)
 
     def refresh(self):
         if self.paused:
-            return                      # freeze the display and keep history intact
-        try:
-            raw = self.frames.get_nowait()
-        except queue.Empty:
+            return
+        # Draw only the newest frame; anything older is already stale.
+        raw = None
+        while True:
+            try:
+                raw = self.frames.get_nowait()
+            except queue.Empty:
+                break
+        if raw is None:
             return
 
         self.frame_count += 1
-        now = time.monotonic() - self.t0
         volts = raw * (VREF / ADC_FULL_SCALE)
-
-        self.h_t.append(now)
-        self.h_frames.append(raw)
-        self.h_min.append(float(volts.min()))
-        self.h_max.append(float(volts.max()))
-        self.h_mean.append(float(volts.mean()))
-        while self.h_t and now - self.h_t[0] > HISTORY_SECONDS:
-            for d in (self.h_t, self.h_frames, self.h_min, self.h_max, self.h_mean):
-                d.popleft()
-
-        self.show_frame(raw)
-
-        n = len(self.h_t)
-        ts = np.fromiter(self.h_t, dtype=float, count=n)
-        self.hist_min.setData(ts, np.fromiter(self.h_min, dtype=float, count=n))
-        self.hist_max.setData(ts, np.fromiter(self.h_max, dtype=float, count=n))
-        self.hist_mean.setData(ts, np.fromiter(self.h_mean, dtype=float, count=n))
-        self.hist_plot.setXRange(max(0.0, now - HISTORY_SECONDS), max(now, HISTORY_SECONDS))
+        self.curve.setData(self.t, volts)
 
         span = self.t[-1]
-        rate = n / max(now - self.h_t[0], 1e-6)
+        fps = self.frame_count / max(time.monotonic() - self.t0, 1e-6)
         self.readout.setText(
             f"frames {self.frame_count:6d} │ "
             f"min {volts.min():5.3f} V  max {volts.max():5.3f} V  "
             f"pk-pk {np.ptp(volts):5.3f} V  mean {volts.mean():5.3f} V │ "
             f"{SAMPLES_PER_FRAME} samples / {span:.2f} µs "
-            f"({SAMPLES_PER_FRAME / span:.2f} MSPS) │ "
-            f"history {n} frames @ {rate:.0f} fps"
+            f"({SAMPLES_PER_FRAME / span:.2f} MSPS) │ {fps:.0f} fps"
         )
 
     def closeEvent(self, event):
